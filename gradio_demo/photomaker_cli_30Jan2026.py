@@ -2,15 +2,6 @@
 """
 PhotoMaker V2 CLI - Generate images without Gradio
 Just edit the configuration below and run: python photomaker_cli.py
-This version:
-1. supports unlimited prompts per face
-2. validates trigger word per prompt
-3. extracts left/right face embeddings
-4. defines all variables in correct order
-5. removes all leftover PROMPT references
-6. avoids NameErrors
-7. keeps your adapter/sketch logic
-8. returns the correct structure
 """
 
 import torch
@@ -44,14 +35,7 @@ INPUT_IMAGES = [
 ]
 
 # Prompt - must include 'img' trigger word
-PROMPTS_FACE_LEFT = [
-    "a photo of a man img wearing a hat",
-]
-
-PROMPTS_FACE_RIGHT = [
-    "a photo of a man img wearing a hat and sunglasses",
-]
-
+PROMPT = "a photo of a man img wearing a hat"
 
 # Output settings
 OUTPUT_DIR = "/teamspace/studios/this_studio/PhotoMaker/Data/Output"
@@ -116,21 +100,6 @@ def add_watermark(image, text="© AI-Generated image by CAP-C6-Group_3", opacity
     draw.text(position, text, fill=(255, 255, 255, opacity), font=font)
 
     return Image.alpha_composite(image, watermark_layer).convert("RGB")
-
-
-def validate_trigger_word(pipe, prompt_text):
-    image_token_id = pipe.tokenizer.convert_tokens_to_ids(pipe.trigger_word)
-    input_ids = pipe.tokenizer.encode(prompt_text)
-
-    if image_token_id not in input_ids:
-        raise ValueError(
-            f"Trigger word '{pipe.trigger_word}' missing in prompt: {prompt_text}"
-        )
-
-    if input_ids.count(image_token_id) > 1:
-        raise ValueError(
-            f"Multiple trigger words '{pipe.trigger_word}' found in prompt: {prompt_text}"
-        )
 
 
 def get_device():
@@ -212,14 +181,13 @@ def load_face_detector(device):
 
 
 def generate_image(pipe, face_detector, device):
-    # -----------------------------
-    # Sketch / Adapter handling
-    # -----------------------------
+    # Handle sketch input
     sketch_image = None
     adapter_scale = 0.
     adapter_factor = 0.
-
+    
     if USE_SKETCH and SKETCH_IMAGE_PATH:
+        from PIL import Image
         sketch_image = Image.open(SKETCH_IMAGE_PATH).convert("RGBA")
         r, g, b, a = sketch_image.split()
         sketch_image = a.convert("RGB")
@@ -228,127 +196,115 @@ def generate_image(pipe, face_detector, device):
         adapter_scale = ADAPTER_CONDITIONING_SCALE
         adapter_factor = ADAPTER_CONDITIONING_FACTOR
 
-    # -----------------------------
+    # Check trigger word
+    image_token_id = pipe.tokenizer.convert_tokens_to_ids(pipe.trigger_word)
+    input_ids = pipe.tokenizer.encode(PROMPT)
+    if image_token_id not in input_ids:
+        raise ValueError(f"Cannot find trigger word '{pipe.trigger_word}' in prompt! Include 'img' in your prompt.")
+
+    if input_ids.count(image_token_id) > 1:
+        raise ValueError(f"Cannot use multiple trigger words '{pipe.trigger_word}' in prompt!")
+
+    output_w = OUTPUT_WIDTH or 1024
+    output_h = OUTPUT_HEIGHT or 1024
+    
+    print(f"[Info] Output dimensions: {output_w} x {output_h}")
+
+    # Apply style
+    prompt, negative_prompt = apply_style(STYLE_NAME, PROMPT, NEGATIVE_PROMPT)
+
     # Load input images
-    # -----------------------------
     if not INPUT_IMAGES:
-        raise ValueError("No input images provided.")
+        raise ValueError("No input images! Edit INPUT_IMAGES in the script.")
 
     input_id_images = []
     for img_path in INPUT_IMAGES:
         if not os.path.exists(img_path):
             raise ValueError(f"Image not found: {img_path}")
         input_id_images.append(load_image(img_path))
+    
+    # Extract face embeddings
+    # To generate two separate outputs, one for each detected face, you need to:
+    # Detect both faces
+    # Extract two separate embeddings
+    # Run the pipeline twice, each time with a different embedding
+    # Save output‑1 using faces[0]
+    # Save output‑2 using faces[1]
 
-    # -----------------------------
-    # Detect faces & extract embeddings
-    # -----------------------------
-    img = input_id_images[0]
-    img_array = np.array(img)[:, :, ::-1]
+    id_embed_list = []
+    for img in input_id_images:
+        img_array = np.array(img)
+        img_array = img_array[:, :, ::-1]
+        # Extract face embeddings for both faces
+        faces = analyze_faces(face_detector, img_array)
+        print("Faces detected:", len(faces))
+        # Extract embeddings for face 0 and face 1
+        if len(faces) < 2:
+            raise ValueError("Need at least two faces in the input image to generate two separate outputs.")
+        # Sort faces by x1 coordinate (left to right)
+        faces_sorted = sorted(faces, key=lambda f: f['bbox'][0])
+        left_face = faces_sorted[0]
+        right_face = faces_sorted[1]
+        print("Left face bbox:", left_face['bbox'])
+        print("Right face bbox:", right_face['bbox'])
+        # Extract embeddings
+        emb_face_left = torch.from_numpy(left_face['embedding']).float()
+        emb_face_right = torch.from_numpy(right_face['embedding']).float()
 
-    faces = analyze_faces(face_detector, img_array)
-    if len(faces) < 2:
-        raise ValueError("Need at least two faces in the input image.")
+    # Shape them for the pipeline
+    id_embeds_face_left = torch.stack([emb_face_left])
+    id_embeds_face_right = torch.stack([emb_face_right])
 
-    # Sort left → right
-    faces_sorted = sorted(faces, key=lambda f: f['bbox'][0])
-    left_face = faces_sorted[0]
-    right_face = faces_sorted[1]
 
-    emb_left = torch.from_numpy(left_face['embedding']).float()
-    emb_right = torch.from_numpy(right_face['embedding']).float()
-
-    id_embeds_face_left = torch.stack([emb_left])
-    id_embeds_face_right = torch.stack([emb_right])
-
-    # -----------------------------
-    # Output dimensions
-    # -----------------------------
-    output_w = OUTPUT_WIDTH or 1024
-    output_h = OUTPUT_HEIGHT or 1024
-
-    # -----------------------------
-    # Seed & generator
-    # -----------------------------
+    # Handle seed
     seed = SEED if SEED is not None else random.randint(0, MAX_SEED)
     generator = torch.Generator(device=device).manual_seed(seed)
 
-    # -----------------------------
-    # Merge step
-    # -----------------------------
+    print("Starting inference...")
+    print(f"[Info] Seed: {seed}")
+    print(f"[Info] Prompt: {prompt}")
+    
     start_merge_step = int(float(STYLE_STRENGTH_RATIO) / 100 * NUM_STEPS)
     if start_merge_step > 30:
         start_merge_step = 30
-
-    # -----------------------------
-    # Trigger word validator
-    # -----------------------------
-    def validate_trigger_word(prompt_text):
-        image_token_id = pipe.tokenizer.convert_tokens_to_ids(pipe.trigger_word)
-        input_ids = pipe.tokenizer.encode(prompt_text)
-
-        if image_token_id not in input_ids:
-            raise ValueError(f"Trigger word '{pipe.trigger_word}' missing in prompt: {prompt_text}")
-
-        if input_ids.count(image_token_id) > 1:
-            raise ValueError(f"Multiple trigger words '{pipe.trigger_word}' found in prompt: {prompt_text}")
-
-    # -----------------------------
-    # Multi‑prompt generation
-    # -----------------------------
-    images_face_left_all = []
-    images_face_right_all = []
-
-    # LEFT FACE
-    for prompt_text in PROMPTS_FACE_LEFT:
-        validate_trigger_word(prompt_text)
-        prompt, negative_prompt = apply_style(STYLE_NAME, prompt_text, NEGATIVE_PROMPT)
-
-        imgs = pipe(
-            prompt=prompt,
-            width=output_w,
-            height=output_h,
-            input_id_images=input_id_images,
-            negative_prompt=negative_prompt,
-            num_images_per_prompt=NUM_OUTPUTS,
-            num_inference_steps=NUM_STEPS,
-            start_merge_step=start_merge_step,
-            generator=generator,
-            guidance_scale=GUIDANCE_SCALE,
-            id_embeds=id_embeds_face_left,
-            image=sketch_image,
-            adapter_conditioning_scale=adapter_scale,
-            adapter_conditioning_factor=adapter_factor,
-        ).images
-
-        images_face_left_all.append((prompt_text, imgs))
-
-    # RIGHT FACE
-    for prompt_text in PROMPTS_FACE_RIGHT:
-        validate_trigger_word(prompt_text)
-        prompt, negative_prompt = apply_style(STYLE_NAME, prompt_text, NEGATIVE_PROMPT)
-
-        imgs = pipe(
-            prompt=prompt,
-            width=output_w,
-            height=output_h,
-            input_id_images=input_id_images,
-            negative_prompt=negative_prompt,
-            num_images_per_prompt=NUM_OUTPUTS,
-            num_inference_steps=NUM_STEPS,
-            start_merge_step=start_merge_step,
-            generator=generator,
-            guidance_scale=GUIDANCE_SCALE,
-            id_embeds=id_embeds_face_right,
-            image=sketch_image,
-            adapter_conditioning_scale=adapter_scale,
-            adapter_conditioning_factor=adapter_factor,
-        ).images
-
-        images_face_right_all.append((prompt_text, imgs))
-
-    return images_face_left_all, images_face_right_all, seed
-
+    
+    # Run for face 0
+    images_face_left = pipe(
+        prompt=prompt,
+        width=output_w,
+        height=output_h,
+        input_id_images=input_id_images,
+        negative_prompt=negative_prompt,
+        num_images_per_prompt=NUM_OUTPUTS,
+        num_inference_steps=NUM_STEPS,
+        start_merge_step=start_merge_step,
+        generator=generator,
+        guidance_scale=GUIDANCE_SCALE,
+        id_embeds=id_embeds_face_left,
+        image=sketch_image,
+        adapter_conditioning_scale=adapter_scale,
+        adapter_conditioning_factor=adapter_factor,
+    ).images
+    
+    # Run for face 1
+    images_face_right = pipe(
+        prompt=prompt,
+        width=output_w,
+        height=output_h,
+        input_id_images=input_id_images,
+        negative_prompt=negative_prompt,
+        num_images_per_prompt=NUM_OUTPUTS,
+        num_inference_steps=NUM_STEPS,
+        start_merge_step=start_merge_step,
+        generator=generator,
+        guidance_scale=GUIDANCE_SCALE,
+        id_embeds=id_embeds_face_right,
+        image=sketch_image,
+        adapter_conditioning_scale=adapter_scale,
+        adapter_conditioning_factor=adapter_factor,
+    ).images
+    
+    return images_face_left, images_face_right, seed
 
 
 def main():
@@ -372,24 +328,21 @@ def main():
         images_face_left, images_face_right, used_seed = generate_image(pipe, face_detector, device)
         print(f"\nSaving outputs to {output_dir}/")
 
-        # Save LEFT FACE outputs
-        for prompt_text, imgs in images_face_left:
-            safe_prompt = prompt_text.replace(" ", "_").replace(",", "")
-            for i, img in enumerate(imgs):
-                img = add_watermark(img)
-                filename = f"left_{safe_prompt}_seed{used_seed}_{i+1}.png"
-                img.save(output_dir / filename)
-                print(f"Saved: {filename}")
+        # Save face 0 output
+        for i, img in enumerate(images_face_left):
+            img = add_watermark(img, text="© AI-Generated image by CAP-C6-Group_3") # ← Add watermark here
+            filename = f"output_face_left_seed{used_seed}_{i+1}.png"
+            filepath = output_dir / filename
+            img.save(filepath)
+            print(f"  Saved face0: {filepath}")
 
-        # Save RIGHT FACE outputs
-        for prompt_text, imgs in images_face_right:
-            safe_prompt = prompt_text.replace(" ", "_").replace(",", "")
-            for i, img in enumerate(imgs):
-                img = add_watermark(img)
-                filename = f"right_{safe_prompt}_seed{used_seed}_{i+1}.png"
-                img.save(output_dir / filename)
-                print(f"Saved: {filename}")
-
+        # Save face 1 output
+        for i, img in enumerate(images_face_right):
+            img = add_watermark(img, text="© AI-Generated image by CAP-C6-Group_3") # ← Add watermark here
+            filename = f"output_face_right_seed{used_seed}_{i+1}.png"
+            filepath = output_dir / filename
+            img.save(filepath)
+            print(f"  Saved face1: {filepath}")
         
         print(f"\nDone! Generated {len(images_face_left)} image(s) for face_left and {len(images_face_right)} image(s) for face_right with seed {used_seed}")
         
