@@ -5,10 +5,7 @@ import numpy as np
 import torch
 from diffusers.utils import load_image
 from .style_template import styles
-from .watermark import add_watermark
 from .face_utils import extract_left_right_embeddings
-
-
 
 MAX_SEED = np.iinfo(np.int32).max
 
@@ -30,65 +27,77 @@ def apply_style(style_name, positive, negative):
     return p.replace("{prompt}", positive), n + " " + negative
 
 
-def generate_images(pipe, face_detector, config):
-    # Load images
-    input_images = [load_image(p) for p in config["INPUT_IMAGES"]]
+def generate_images(
+    pipe,
+    face_detector,
+    input_image_path,
+    left_prompt,
+    right_prompt,
+    seed,
+    style_name,
+    negative_prompt,
+    width,
+    height,
+    num_outputs,
+    num_steps,
+    style_strength_ratio,
+    guidance_scale
+):
+    # Load input image
+    input_image = load_image(input_image_path)
 
-    # Extract embeddings
-    id_left, id_right = extract_left_right_embeddings(face_detector, input_images[0])
+    # Extract identity embeddings
+    id_left, id_right = extract_left_right_embeddings(face_detector, input_image)
 
     # Seed
-    seed = config["SEED"] if config["SEED"] is not None else random.randint(0, MAX_SEED)
+    seed = seed if seed is not None else random.randint(0, MAX_SEED)
     generator = torch.Generator(device=pipe.device).manual_seed(seed)
 
     # Merge step
-    start_merge_step = int(float(config["STYLE_STRENGTH_RATIO"]) / 100 * config["NUM_STEPS"])
+    start_merge_step = int(float(style_strength_ratio) / 100 * num_steps)
     start_merge_step = min(start_merge_step, 30)
 
-    # Output containers
     left_results = []
     right_results = []
 
     # LEFT FACE
-    for prompt_text in config["PROMPTS_FACE_LEFT"]:
-        validate_trigger_word(pipe, prompt_text)
-        prompt, neg = apply_style(config["STYLE_NAME"], prompt_text, config["NEGATIVE_PROMPT"])
+    validate_trigger_word(pipe, left_prompt)
+    prompt_left, neg_left = apply_style(style_name, left_prompt, negative_prompt)
 
-        imgs = pipe(
-            prompt=prompt,
-            width=config["OUTPUT_WIDTH"],
-            height=config["OUTPUT_HEIGHT"],
-            input_id_images=input_images,
-            negative_prompt=neg,
-            num_images_per_prompt=config["NUM_OUTPUTS"],
-            num_inference_steps=config["NUM_STEPS"],
-            start_merge_step=start_merge_step,
-            generator=generator,
-            guidance_scale=config["GUIDANCE_SCALE"],
-            id_embeds=id_left,
-        ).images
+    imgs_left = pipe(
+        prompt=prompt_left,
+        width=width,
+        height=height,
+        input_id_images=[input_image],
+        negative_prompt=neg_left,
+        num_images_per_prompt=num_outputs,
+        num_inference_steps=num_steps,
+        start_merge_step=start_merge_step,
+        generator=generator,
+        guidance_scale=guidance_scale,
+        id_embeds=id_left,
+    ).images
 
-        left_results.append((prompt_text, imgs))
+    left_results.append((left_prompt, imgs_left))
 
     # RIGHT FACE
-    for prompt_text in config["PROMPTS_FACE_RIGHT"]:
-        validate_trigger_word(pipe, prompt_text)
-        prompt, neg = apply_style(config["STYLE_NAME"], prompt_text, config["NEGATIVE_PROMPT"])
+    validate_trigger_word(pipe, right_prompt)
+    prompt_right, neg_right = apply_style(style_name, right_prompt, negative_prompt)
 
-        imgs = pipe(
-            prompt=prompt,
-            width=config["OUTPUT_WIDTH"],
-            height=config["OUTPUT_HEIGHT"],
-            input_id_images=input_images,
-            negative_prompt=neg,
-            num_images_per_prompt=config["NUM_OUTPUTS"],
-            num_inference_steps=config["NUM_STEPS"],
-            start_merge_step=start_merge_step,
-            generator=generator,
-            guidance_scale=config["GUIDANCE_SCALE"],
-            id_embeds=id_right,
-        ).images
+    imgs_right = pipe(
+        prompt=prompt_right,
+        width=width,
+        height=height,
+        input_id_images=[input_image],
+        negative_prompt=neg_right,
+        num_images_per_prompt=num_outputs,
+        num_inference_steps=num_steps,
+        start_merge_step=start_merge_step,
+        generator=generator,
+        guidance_scale=guidance_scale,
+        id_embeds=id_right,
+    ).images
 
-        right_results.append((prompt_text, imgs))
+    right_results.append((right_prompt, imgs_right))
 
     return left_results, right_results, seed

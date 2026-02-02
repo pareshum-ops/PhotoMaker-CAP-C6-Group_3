@@ -5,10 +5,20 @@ from .pipeline_loader import load_pipeline, get_device
 from .face_utils import load_face_detector
 from .generation import generate_images
 from .watermark import add_watermark
-from .config import *
+from .config import (
+    OUTPUT_DIR,
+    STYLE_NAME,
+    NEGATIVE_PROMPT,
+    OUTPUT_WIDTH,
+    OUTPUT_HEIGHT,
+    NUM_OUTPUTS,
+    NUM_STEPS,
+    STYLE_STRENGTH_RATIO,
+    GUIDANCE_SCALE,
+)
 
 
-def main():
+def main(input_image, left_prompt, right_prompt, seed):
     print("=" * 50)
     print("PhotoMaker V2 CLI")
     print("=" * 50)
@@ -22,9 +32,22 @@ def main():
     pipe = load_pipeline(device)
     face_detector = load_face_detector(device)
 
-    config = globals()
-
-    left_imgs, right_imgs, seed = generate_images(pipe, face_detector, config)
+    left_imgs, right_imgs, seed = generate_images(
+        pipe=pipe,
+        face_detector=face_detector,
+        input_image_path=input_image,
+        left_prompt=left_prompt,
+        right_prompt=right_prompt,
+        seed=seed,
+        style_name=STYLE_NAME,
+        negative_prompt=NEGATIVE_PROMPT,
+        width=OUTPUT_WIDTH,
+        height=OUTPUT_HEIGHT,
+        num_outputs=NUM_OUTPUTS,
+        num_steps=NUM_STEPS,
+        style_strength_ratio=STYLE_STRENGTH_RATIO,
+        guidance_scale=GUIDANCE_SCALE,
+    )
 
     print(f"\nSaving outputs to {output_dir}/")
 
@@ -46,8 +69,4 @@ def main():
             img.save(output_dir / filename)
             print(f"Saved: {filename}")
 
-    print(f"\nDone! Generated {len(left_imgs)} left-face and {len(right_imgs)} right-face images with seed {seed}")
-
-
-if __name__ == "__main__":
-    main()
+    print(f"\nDone! Generated images with seed {seed}")

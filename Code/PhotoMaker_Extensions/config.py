@@ -7,11 +7,11 @@ INPUT_IMAGES = [
 
 # Prompts
 PROMPTS_FACE_LEFT = [
-    "a photo of a man img wearing a hat",
+    "a man img wearing a spacesuit",
 ]
 
 PROMPTS_FACE_RIGHT = [
-    "a photo of a man img wearing a hat and sunglasses",
+    "a man img wearing a spacesuit",
 ]
 
 # Output settings
