@@ -1,9 +1,7 @@
 # config.py
 
 # Input image(s)
-INPUT_IMAGES = [
-    "/teamspace/studios/this_studio/PhotoMaker/Data/Input/Rafa&Fed_3.jpg",
-]
+INPUT_IMAGES = "/teamspace/studios/this_studio/PhotoMaker-CAP-C6-Group_3/Data/Input"
 
 # Prompts
 PROMPTS_FACE_LEFT = [
@@ -15,7 +13,7 @@ PROMPTS_FACE_RIGHT = [
 ]
 
 # Output settings
-OUTPUT_DIR = "/teamspace/studios/this_studio/PhotoMaker/Data/Output"
+OUTPUT_DIR = "/teamspace/studios/this_studio/PhotoMaker-CAP-C6-Group_3/Data/Output"
 NUM_OUTPUTS = 1
 
 # Style

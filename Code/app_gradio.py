@@ -10,7 +10,7 @@ from PhotoMaker_Extensions import config
 
 
 def get_or_save_input_image(uploaded_file):
-    input_dir = Path("/teamspace/studios/this_studio/PhotoMaker/Data/Input")
+    input_dir = Path("/teamspace/studios/this_studio/PhotoMaker-CAP-C6-Group_3/Data/Input")
     input_dir.mkdir(parents=True, exist_ok=True)
 
     saved_path = input_dir / "uploaded_input_image.png"
@@ -24,7 +24,7 @@ def get_or_save_input_image(uploaded_file):
 
 
 def get_existing_input_image():
-    input_dir = Path("/teamspace/studios/this_studio/PhotoMaker/Data/Input")
+    input_dir = Path("/teamspace/studios/this_studio/PhotoMaker-CAP-C6-Group_3/Data/Input")
     existing = list(input_dir.glob("*.png")) + list(input_dir.glob("*.jpg"))
     return str(existing[0]) if existing else None
 
@@ -90,7 +90,7 @@ if __name__ == "__main__":
     ui.launch(
         share=True,
         allowed_paths=[
-            "/teamspace/studios/this_studio/PhotoMaker/Data/Output",
-            "/teamspace/studios/this_studio/PhotoMaker/Data/Input"
-        ]
+            "/teamspace/studios/this_studio/PhotoMaker-CAP-C6-Group_3/Data/Output",
+            "/teamspace/studios/this_studio/PhotoMaker-CAP-C6-Group_3/Data/Input"
+                    ]
     )
