@@ -16,7 +16,10 @@ from .config import (
     STYLE_STRENGTH_RATIO,
     GUIDANCE_SCALE,
 )
+from .invisible_watermark.utils import encode_watermark
 
+# 64-bit watermark payload (example)
+bitstring = [1,0,1,1,0,1,0,1] * 8
 
 def main(input_image, left_prompt, right_prompt, seed):
     print("=" * 50)
@@ -52,21 +55,34 @@ def main(input_image, left_prompt, right_prompt, seed):
     print(f"\nSaving outputs to {output_dir}/")
 
     # LEFT FACE
+# LEFT FACE
     for prompt_text, imgs in left_imgs:
         safe = prompt_text.replace(" ", "_").replace(",", "")
         for i, img in enumerate(imgs):
+
+            # Apply invisible watermark
+            img = encode_watermark(img, bitstring)
+            # Apply visible watermark
             img = add_watermark(img)
+
             filename = f"left_{safe}_seed{seed}_{i+1}.png"
             img.save(output_dir / filename)
             print(f"Saved: {filename}")
 
+
+
     # RIGHT FACE
+# RIGHT FACE
     for prompt_text, imgs in right_imgs:
         safe = prompt_text.replace(" ", "_").replace(",", "")
         for i, img in enumerate(imgs):
+
+            # Apply invisible watermark
+            img = encode_watermark(img, bitstring)
+            # Apply visible watermark
             img = add_watermark(img)
+
             filename = f"right_{safe}_seed{seed}_{i+1}.png"
             img.save(output_dir / filename)
             print(f"Saved: {filename}")
 
-    print(f"\nDone! Generated images with seed {seed}")
