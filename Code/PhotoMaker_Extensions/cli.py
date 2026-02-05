@@ -1,5 +1,3 @@
-# cli.py
-
 from pathlib import Path
 from .pipeline_loader import load_pipeline, get_device
 from .face_utils import load_face_detector
@@ -18,10 +16,12 @@ from .config import (
 )
 from .invisible_watermark.utils import encode_watermark
 
+
 # 64-bit watermark payload (example)
 bitstring = [1,0,1,1,0,1,0,1] * 8
 
-def main(input_image, left_prompt, right_prompt, seed):
+
+def main(input_image, left_prompt, right_prompt, seed=None, watermark=True):
     print("=" * 50)
     print("PhotoMaker V2 CLI")
     print("=" * 50)
@@ -55,34 +55,57 @@ def main(input_image, left_prompt, right_prompt, seed):
     print(f"\nSaving outputs to {output_dir}/")
 
     # LEFT FACE
-# LEFT FACE
     for prompt_text, imgs in left_imgs:
         safe = prompt_text.replace(" ", "_").replace(",", "")
         for i, img in enumerate(imgs):
 
-            # Apply invisible watermark
-            img = encode_watermark(img, bitstring)
-            # Apply visible watermark
-            img = add_watermark(img)
+            if watermark:
+                # Invisible watermark
+                img = encode_watermark(img, bitstring)
+                # Visible watermark
+                img = add_watermark(img)
+            else:
+                print("Skipping watermark for LEFT image")
 
             filename = f"left_{safe}_seed{seed}_{i+1}.png"
             img.save(output_dir / filename)
             print(f"Saved: {filename}")
 
-
-
     # RIGHT FACE
-# RIGHT FACE
     for prompt_text, imgs in right_imgs:
         safe = prompt_text.replace(" ", "_").replace(",", "")
         for i, img in enumerate(imgs):
 
-            # Apply invisible watermark
-            img = encode_watermark(img, bitstring)
-            # Apply visible watermark
-            img = add_watermark(img)
+            if watermark:
+                # Invisible watermark
+                img = encode_watermark(img, bitstring)
+                # Visible watermark
+                img = add_watermark(img)
+            else:
+                print("Skipping watermark for RIGHT image")
 
             filename = f"right_{safe}_seed{seed}_{i+1}.png"
             img.save(output_dir / filename)
             print(f"Saved: {filename}")
 
+
+if __name__ == "__main__":
+    import argparse
+
+    parser = argparse.ArgumentParser()
+
+    parser.add_argument("--input_image", type=str, required=True)
+    parser.add_argument("--left_prompt", type=str, required=True)
+    parser.add_argument("--right_prompt", type=str, required=True)
+    parser.add_argument("--seed", type=int, default=None)
+    parser.add_argument("--watermark", action="store_true")
+
+    args = parser.parse_args()
+
+    main(
+        input_image=args.input_image,
+        left_prompt=args.left_prompt,
+        right_prompt=args.right_prompt,
+        seed=args.seed,
+        watermark=args.watermark,
+    )

@@ -52,7 +52,7 @@ def get_existing_input_image():
     return str(existing[0]) if existing else None
 
 
-def generate_images(uploaded_image, left_prompt, right_prompt, seed_value):
+def generate_images(uploaded_image, left_prompt, right_prompt, seed_value, watermark_mode):
     image_path = get_or_save_input_image(uploaded_image)
     if image_path is None:
         return "No input image found. Please upload one.", [], []
@@ -67,6 +67,7 @@ def generate_images(uploaded_image, left_prompt, right_prompt, seed_value):
         left_prompt=left_prompt,
         right_prompt=right_prompt,
         seed=seed,
+        watermark=(watermark_mode == "With Watermark")
     )
 
     out_dir = Path(config.OUTPUT_DIR)
@@ -74,6 +75,7 @@ def generate_images(uploaded_image, left_prompt, right_prompt, seed_value):
     right_imgs = sorted(glob.glob(str(out_dir / "right_*.png")))
 
     return "Generation complete.", left_imgs, right_imgs
+
 
 
 def build_ui():
@@ -92,9 +94,16 @@ def build_ui():
                 right_prompt = gr.Textbox(label="Right Face Prompt")
                 seed = gr.Textbox(label="Seed (optional)")
 
+                watermark_mode = gr.Radio(
+                    choices=["With Watermark", "Without Watermark"],
+                    value="With Watermark",
+                    label="Watermark Mode"
+                )
+
                 generate_btn = gr.Button("Generate Images")
                 verify_button = gr.Button("Verify Watermark")
                 verify_output = gr.Textbox(label="Verification Result")
+
 
             with gr.Column(scale=2):
                 status = gr.Textbox(label="Status")
@@ -104,9 +113,10 @@ def build_ui():
         # Generate button wiring
         generate_btn.click(
             fn=generate_images,
-            inputs=[uploaded_image, left_prompt, right_prompt, seed],
+            inputs=[uploaded_image, left_prompt, right_prompt, seed, watermark_mode],
             outputs=[status, left_gallery, right_gallery],
         )
+
 
         # Verify watermark button wiring
         verify_button.click(
