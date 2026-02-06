@@ -14,11 +14,11 @@ decoder = WatermarkDecoder(bit_length=BIT_LENGTH)
 # Try loading trained weights
 try:
     encoder.load_state_dict(torch.load(
-        Path(__file__).parent / "encoder_trained.pth",
+        Path(__file__).parent / "encoder_best.pth",
         map_location="cpu"
     ))
     decoder.load_state_dict(torch.load(
-        Path(__file__).parent / "decoder_trained.pth",
+        Path(__file__).parent / "decoder_best.pth",
         map_location="cpu"
     ))
     print("Loaded trained invisible watermark models.")

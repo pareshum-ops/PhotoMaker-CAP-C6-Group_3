@@ -1,42 +1,40 @@
-# PhotoMaker_Extensions/invisible_watermark/encoder.py
-
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 
 class WatermarkEncoder(nn.Module):
     def __init__(self, bit_length=64):
         super().__init__()
         self.bit_length = bit_length
 
-        # Map watermark bits → feature map
-        self.embed = nn.Sequential(
-            nn.Linear(bit_length, 256),
-            nn.ReLU(),
-            nn.Linear(256, 64 * 64),
-            nn.ReLU()
-        )
+        # 256 feature maps of size 16×16
+        self.bit_fc = nn.Linear(bit_length, 256 * 16 * 16)
 
-        # Simple U-Net style encoder
         self.conv = nn.Sequential(
-            nn.Conv2d(4, 32, 3, padding=1),
-            nn.ReLU(),
-            nn.Conv2d(32, 32, 3, padding=1),
-            nn.ReLU(),
-            nn.Conv2d(32, 3, 1)
+            nn.Conv2d(3 + 256, 64, 3, padding=1),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(64, 64, 3, padding=1),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(64, 32, 3, padding=1),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(32, 3, 1),
         )
 
     def forward(self, image, bits):
         B, C, H, W = image.shape
 
-        # Expand watermark to spatial map
-        wm = self.embed(bits).view(B, 1, 64, 64)
-        wm = torch.nn.functional.interpolate(wm, size=(H, W), mode="bilinear")
+        # Correct reshape
+        x = self.bit_fc(bits).view(B, 256, 16, 16)
 
-        # Concatenate image + watermark map
-        x = torch.cat([image, wm], dim=1)
+        # Upsample to image size
+        x = F.interpolate(x, size=(H, W), mode="bilinear", align_corners=False)
+
+        # Concatenate bit features with image
+        x = torch.cat([image, x], dim=1)
 
         # Predict residual
         residual = self.conv(x)
 
-        # Add residual to image
-        return torch.clamp(image + 0.01 * residual, 0, 1)
+        return torch.clamp(image + 0.01 * residual, 0.0, 1.0)
+
+
