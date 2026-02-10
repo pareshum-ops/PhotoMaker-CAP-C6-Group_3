@@ -14,7 +14,8 @@ from .config import (
     STYLE_STRENGTH_RATIO,
     GUIDANCE_SCALE,
 )
-from .invisible_watermark.utils import encode_watermark
+from .dct_watermark import embed_watermark
+from PIL import Image
 
 
 # 64-bit watermark payload (example)
@@ -60,10 +61,25 @@ def main(input_image, left_prompt, right_prompt, seed=None, watermark=True):
         for i, img in enumerate(imgs):
 
             if watermark:
-                # Invisible watermark
-                img = encode_watermark(img, bitstring)
-                # Visible watermark
+                # 1. Visible watermark (optional)
                 img = add_watermark(img)
+
+                # 2. Invisible DCT watermark
+                import numpy as np
+
+                # Convert PIL → NumPy
+                np_img = np.array(img)
+
+                # Prepare watermark bits (example)
+                wm_text = "Group3"
+                wm_bits = [int(b) for b in ''.join(f"{ord(c):08b}" for c in wm_text)]
+
+                # Embed invisible watermark
+                np_img = embed_watermark(np_img, wm_bits, strength=8)
+
+                # Convert back to PIL
+                img = Image.fromarray(np_img)
+
             else:
                 print("Skipping watermark for LEFT image")
 
@@ -77,10 +93,25 @@ def main(input_image, left_prompt, right_prompt, seed=None, watermark=True):
         for i, img in enumerate(imgs):
 
             if watermark:
-                # Invisible watermark
-                img = encode_watermark(img, bitstring)
-                # Visible watermark
+                # 1. Visible watermark (optional)
                 img = add_watermark(img)
+
+                # 2. Invisible DCT watermark
+                import numpy as np
+
+                # Convert PIL → NumPy
+                np_img = np.array(img)
+
+                # Prepare watermark bits (example)
+                wm_text = "Group3"
+                wm_bits = [int(b) for b in ''.join(f"{ord(c):08b}" for c in wm_text)]
+
+                # Embed invisible watermark
+                np_img = embed_watermark(np_img, wm_bits, strength=8)
+
+                # Convert back to PIL
+                img = Image.fromarray(np_img)
+
             else:
                 print("Skipping watermark for RIGHT image")
 
